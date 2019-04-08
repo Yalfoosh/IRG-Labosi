@@ -134,10 +134,11 @@ def second():
     draw_list = model.get_draw_list(*(model.get_translation_and_scaling((width, height))))
 
     for triangle in draw_list:
-        graphics_batch.add(3,
-                           GL_LINES,
-                           None,
-                           ("v2f", triangle))
+        graphics_batch.add_indexed(3,
+                                   GL_LINES,
+                                   None,
+                                   [0, 1, 1, 2, 2, 0],
+                                   ("v2f", triangle))
 
     print(STRING[Phrase.LAB2_SecondAssignment_PointNotTouchingModel].format(vertex,
                                                                             model.get_relation(vertex).str_croatian()))
