@@ -6,8 +6,8 @@ from typing import List
 from pyglet.gl import *
 from pyglet.window import mouse
 
-from globals import DELIMITER, REGEX, STRING, NUMBER,\
-                    Delimiter, RegularExpression, Phrase, Number,\
+from globals import REGEX, STRING, NUMBER,\
+                    RegularExpression, Phrase, Number,\
                     solve_equation_set, get_resolution
 
 # region First Assignment
@@ -166,6 +166,7 @@ def first():
 
 # region Second Assignment
 
+
 def draw_line(batch, starting_vertex, ending_vertex, color_tuple=("c3B", (255, 0, 0, 255, 0, 0))):
     to_draw = list()
     to_draw.extend(starting_vertex)
@@ -289,6 +290,7 @@ def second():
     print("\n")
 
 # endregion
+
 
 def main():
     user_input = None
