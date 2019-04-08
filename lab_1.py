@@ -8,7 +8,7 @@ from pyglet.window import mouse
 
 from globals import DELIMITER, REGEX, STRING, NUMBER,\
                     Delimiter, RegularExpression, Phrase, Number,\
-                    solve_equation_set
+                    solve_equation_set, get_resolution
 
 # region First Assignment
 
@@ -106,6 +106,7 @@ def first():
     # endregion
 
     # region Task 8
+    # TODO ispravi baricentrične koordinate u smislu poruke gdje se točka nalazi.
     triangles = list()
     point = list()
 
@@ -162,7 +163,6 @@ def first():
     print("\n")
 
 # endregion
-
 
 # region Second Assignment
 
@@ -250,25 +250,7 @@ def draw_line_pixel_by_pixel(batch, starting_vertex, ending_vertex):
 def second():
     user_input, width, height = None, None, None
 
-    while user_input is None:
-        user_input = input("{}: ".format(STRING[Phrase.LAB1_SecondAssignment_EnterResolution]))
-
-        if re.match(REGEX[RegularExpression.LAB1_SecondAssignment_Resolution], user_input):
-            results = re.split(DELIMITER[Delimiter.Resolution], user_input)[0::2]
-
-            if len(results) is 2:
-                try:
-                    width, height = int(results[1]), int(results[1])
-                except ValueError:
-                    print("{}\n".format(STRING[Phrase.LAB1_SecondAssignment_InvalidResolution]))
-                    user_input = None
-            else:
-                print(results)
-                print("{}\n".format(STRING[Phrase.LAB1_SecondAssignment_InvalidResolution]))
-                user_input = None
-        else:
-            print("{}\n".format(STRING[Phrase.LAB1_SecondAssignment_InvalidResolution]))
-            user_input = None
+    width, height = get_resolution()
 
     mouse_presses = list()
     graphics_batch = pyglet.graphics.Batch()
@@ -308,28 +290,22 @@ def second():
 
 # endregion
 
-
-# region General
-
-
 def main():
     user_input = None
 
     while user_input is None:
-        user_input = input("{}: ".format(STRING[Phrase.LAB1_EnterTaskNumber]))
+        user_input = input("{}: ".format(STRING[Phrase.Universal_EnterTaskNumber]))
 
-        if re.match(REGEX[RegularExpression.LAB1_FirstAssignmentCommand], user_input):
+        if re.match(REGEX[RegularExpression.LAB2_FirstAssignmentCommand], user_input):
             first()
-        elif re.match(REGEX[RegularExpression.LAB1_SecondAssignmentCommand], user_input):
+        elif re.match(REGEX[RegularExpression.LAB2_SecondAssignmentCommand], user_input):
             second()
         elif re.match(REGEX[RegularExpression.Universal_ExitLoop], user_input):
             exit()
         else:
-            print("{}\n".format(STRING[Phrase.LAB1_InvalidTaskNumber]))
+            print("{}\n".format(STRING[Phrase.Universal_InvalidTaskNumber]))
 
         user_input = None
-
-# endregion
 
 
 main()
