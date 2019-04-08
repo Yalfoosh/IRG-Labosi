@@ -483,7 +483,7 @@ def get_resolution() -> Tuple[int, int]:
 
             if len(results) is 2:
                 try:
-                    width, height = int(results[1]), int(results[1])
+                    width, height = int(results[0]), int(results[1])
                 except ValueError:
                     print("{}\n".format(STRING[Phrase.Universal_InvalidResolution]))
                     user_input = None
