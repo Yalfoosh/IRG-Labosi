@@ -348,7 +348,7 @@ class Model:
 
             a = (vertices[1][1] - vertices[0][1]) * (vertices[2][2] - vertices[0][2])\
                 - (vertices[1][2] - vertices[0][2]) * (vertices[2][1] - vertices[0][1])
-            b = (vertices[1][2] - vertices[0][1]) * (vertices[2][0] - vertices[0][0])\
+            b = (vertices[1][2] - vertices[0][2]) * (vertices[2][0] - vertices[0][0])\
                 - (vertices[1][0] - vertices[0][0]) * (vertices[2][2] - vertices[0][2])
             c = (vertices[1][0] - vertices[0][0]) * (vertices[2][1] - vertices[0][1])\
                 - (vertices[1][1] - vertices[0][1]) * (vertices[2][0] - vertices[0][0])
@@ -394,8 +394,6 @@ class Model:
         return draw_list
 
     def get_relation(self, vertex: Tuple[float, float, float]) -> "SpatialRelation":
-        outside = False
-
         for i in range(0, len(self.coefficients["A"])):
             result = self.coefficients["A"][i] * vertex[0] + self.coefficients["B"][i] * vertex[1]\
                     + self.coefficients["C"][i] * vertex[2] + self.coefficients["D"][i]
