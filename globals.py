@@ -3,6 +3,7 @@ import re
 import os
 
 from enum import Enum, auto
+from math import *
 from typing import Any, Dict, List, Tuple
 
 # region Delimiters
@@ -42,6 +43,9 @@ class RegularExpression(Enum):
 
     LAB2_FirstAssignment_Resolution = auto(),
 
+    LAB3_FirstAssignmentCommand = auto(),
+    LAB3_SecondAssignmentCommand = auto(),
+
 
 REGEX: Dict[RegularExpression, str] =\
     {
@@ -59,6 +63,9 @@ REGEX: Dict[RegularExpression, str] =\
 
         RegularExpression.LAB2_FirstAssignmentCommand: r"((?i)(1|jedan|prva|prvi|one|first))",
         RegularExpression.LAB2_SecondAssignmentCommand: r"((?i)(2|dva|druga|drugi|two|second))",
+
+        RegularExpression.LAB3_FirstAssignmentCommand: r"((?i)(1|jedan|prva|prvi|one|first))",
+        RegularExpression.LAB3_SecondAssignmentCommand: r"((?i)(2|dva|druga|drugi|two|second))",
     }
 
 # endregion
@@ -312,6 +319,19 @@ class Model:
 
         self.coefficients: Dict[str, List[float]] = dict()
 
+        self.eye_point = [0, 0, 0]
+        self.viewpoint = [0, 0, 0]
+
+        self.t_matrix = [[1, 0, 0, 0],
+                         [0, 1, 0, 0],
+                         [0, 0, 1, 0],
+                         [0, 0, 0, 1]]
+
+        self.p_matrix = [[1, 0, 0, 0],
+                         [0, 1, 0, 0],
+                         [0, 0, 1, 0],
+                         [0, 0, 0, 1]]
+
         # region Parse string.
 
         for line in obj_string.splitlines():
@@ -360,6 +380,66 @@ class Model:
 
         # endregion
 
+    def calculate_perspective_matrices(self):
+        t_1 = [[1, 0, 0, 0],
+               [0, 1, 0, 0],
+               [0, 0, 1, 0],
+               [-self.eye_point[0], -self.eye_point[1], -self.eye_point[2], 1]]
+
+        g_1 = np.matmul([*self.viewpoint, 1], t_1)
+
+        alpha_denominator = (g_1[0] ** 2 + g_1[1] ** 2) ** 0.5
+
+        alpha = (g_1[1] / alpha_denominator,
+                 g_1[0] / alpha_denominator)
+
+        t_2 = [[alpha[1], -alpha[0], 0, 0],
+               [alpha[0], alpha[1], 0, 0],
+               [0, 0, 1, 0],
+               [0, 0, 0, 1]]
+
+        g_2 = np.matmul(g_1, t_2)
+
+        beta_denominator = (g_2[0] ** 2 + g_2[2] ** 2) ** 0.5
+
+        beta = (g_2[0] / beta_denominator,
+                g_2[2] / beta_denominator)
+
+        t_3 = [[beta[1], 0, beta[0], 0],
+               [0, 1, 0, 0],
+               [-beta[0], 0, beta[1], 0],
+               [0, 0, 0, 1]]
+
+        t_4 = [[0, -1, 0, 0],
+               [1, 0, 0, 0],
+               [0, 0, 1, 0],
+               [0, 0, 0, 1]]
+
+        t_5 = [[-1, 0, 0, 0],
+               [0, 1, 0, 0],
+               [0, 0, 1, 0],
+               [0, 0, 0, 1]]
+
+        self.t_matrix = np.matmul(t_1, t_2)
+        self.t_matrix = np.matmul(self.t_matrix, t_3)
+        self.t_matrix = np.matmul(self.t_matrix, t_4)
+        self.t_matrix = np.matmul(self.t_matrix, t_5)
+
+        h = ((self.eye_point[0] - self.viewpoint[0]) ** 2 +
+             (self.eye_point[1] - self.viewpoint[1]) ** 2 +
+             (self.eye_point[2] - self.viewpoint[2]) ** 2) ** 0.5
+
+        self.p_matrix = [[1, 0, 0, 0],
+                         [0, 1, 0, 0],
+                         [0, 0, 0, 1 / h],
+                         [0, 0, 0, 0]]
+
+    def set_eye_and_view(self, eye_point: Tuple[float, float, float], viewpoint: Tuple[float, float, float]):
+        self.eye_point = eye_point
+        self.viewpoint = viewpoint
+
+        self.calculate_perspective_matrices()
+
     def get_translation_and_scaling(self, resolution: Tuple[int, int])\
             -> Tuple[Tuple[float, float], float, Tuple[float, float]]:
         middle_values = ((self._coordinate_bounds[0] + self._coordinate_bounds[1]),
@@ -392,6 +472,25 @@ class Model:
                               (vertices[2][1] + translation[1]) * scaling + second_translation[1]))
 
         return draw_list
+
+    def get_viewpoint_draw_list(self)\
+            -> List[Tuple[float, float, float, float, float, float]]:
+        viewpoint_draw_list = list()
+        new_vertices = list()
+
+        for vertex in self.vertices:
+            new_vertex = np.matmul(np.matmul([*vertex, 1], self.t_matrix), self.p_matrix)
+            new_vertex = tuple(np.multiply(new_vertex, 1/new_vertex[3]))
+            new_vertices.append(new_vertex)
+
+        for face in self.faces:
+            vertices = (new_vertices[face[0] - 1], new_vertices[face[1] - 1], new_vertices[face[2] - 1])
+
+            viewpoint_draw_list.append((vertices[0][0], vertices[0][1],
+                                        vertices[1][0], vertices[1][1],
+                                        vertices[2][0], vertices[2][1]))
+
+        return viewpoint_draw_list
 
     def get_relation(self, vertex: Tuple[float, float, float]) -> "SpatialRelation":
         for i in range(0, len(self.coefficients["A"])):
@@ -557,5 +656,46 @@ def get_vertex_3d() -> Tuple[float, float, float]:
             user_input = None
 
     return vertex
+
+
+def get_eye_point() -> Tuple[float, float, float]:
+    print("Očište:")
+    return get_vertex_3d()
+
+
+def get_viewpoint() -> Tuple[float, float, float]:
+    print("Gledište:")
+    return get_vertex_3d()
+
+
+def get_bezier(vertices: List):
+    points = list()
+
+    l = len(vertices)
+    c = list()
+
+    for i in range(l):
+        c.append(factorial(l - 1) / (factorial(i) * factorial(l - i - 1)))
+
+    t = 0.0
+
+    l -= 1
+
+    while t <= 1.:
+        i = 0
+        p = [0, 0, 0]
+
+        for vertex in vertices:
+            r = [*vertex]
+            b = c[i] * t ** i * (1 - t) ** (l - i)
+            p = np.add(p, np.multiply(r, b))
+            i += 1
+
+        points.append((p[0], p[1]))
+
+        t += 0.01
+
+    return points
+
 
 # endregion
