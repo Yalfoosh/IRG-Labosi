@@ -1,6 +1,7 @@
 import numpy as np
 import re
 import os
+import pyglet
 
 from enum import Enum, auto
 from math import *
@@ -332,6 +333,11 @@ class Model:
                          [0, 0, 1, 0],
                          [0, 0, 0, 1]]
 
+        self.light_source = [0, 0, 0]
+
+        self.intensity_a, self.intensity_i = (255, 255)
+        self.coefficient_a, self.coefficient_d = (0.5, 0.2)
+
         # region Parse string.
 
         for line in obj_string.splitlines():
@@ -379,6 +385,205 @@ class Model:
             self.coefficients["D"].append(-vertices[0][0] * a - vertices[0][1] * b - vertices[0][2] * c)
 
         # endregion
+
+    def normalize_in_space(self):
+        max_x, max_y, max_z = self.vertices[0]
+        min_x, min_y, min_z = self.vertices[0]
+
+        for vertex in self.vertices:
+            max_x, max_y, max_z = (max(vertex[0], max_x), max(vertex[1], max_y), max(vertex[2], max_z))
+            min_x, min_y, min_z = (min(vertex[0], min_x), min(vertex[1], min_y), min(vertex[2], min_z))
+
+        center = (float(min_x + max_x)/2., float(min_y + max_y)/2., float(min_z + max_z) /2.)
+        biggest_offset = float(max(max_x - min_x, max_y - min_y, max_z - min_z))
+
+        new_vertices = list()
+
+        for vertex in self.vertices:
+            new_vertices.append(((vertex[0] - center[0]) * 2 / biggest_offset,
+                                 (vertex[1] - center[1]) * 2 / biggest_offset,
+                                 (vertex[2] - center[2]) * 2 / biggest_offset))
+
+        self.vertices = new_vertices
+
+    def get_minimized_vertex_list(self):
+        vertex_list = list()
+        new_vertices = list()
+
+        for vertex in self.vertices:
+            new_vertex = np.matmul(np.matmul([*vertex, 1], self.t_matrix), self.p_matrix)
+            new_vertex = tuple(np.multiply(new_vertex, 1 / new_vertex[3]))
+            new_vertices.append(new_vertex)
+
+        for face in self.faces:
+            verts = (new_vertices[face[0] - 1], new_vertices[face[1] - 1], new_vertices[face[2] - 1])
+
+            a = (verts[1][1] - verts[0][1]) * (verts[2][2] - verts[0][2]) - (verts[1][2] - verts[0][2]) *\
+                (verts[2][1] - verts[0][1])
+            b = (verts[1][2] - verts[0][1]) * (verts[2][0] - verts[0][0]) - (verts[1][0] - verts[0][0]) *\
+                (verts[2][2] - verts[0][2])
+            c = (verts[1][0] - verts[0][0]) * (verts[2][1] - verts[0][1]) - (verts[1][1] - verts[0][1]) *\
+                (verts[2][0] - verts[0][0])
+
+            xc = (verts[0][0] + verts[1][0] + verts[2][0]) / 3
+            yc = (verts[0][1] + verts[1][1] + verts[2][1]) / 3
+            zc = (verts[0][2] + verts[1][2] + verts[2][2]) / 3
+
+            d = (self.eye_point[0] - xc, self.eye_point[1] - yc, self.eye_point[2] - zc)
+
+            cos_a = (a * d[0] + b * d[1] + c * d[2]) /\
+                    ((a ** 2 + b ** 2 + c ** 2) ** 0.5 * (d[0] ** 2 + d[1] ** 2 + d[2] ** 2) ** 0.5)
+
+            if degrees(acos(cos_a)) < 90:
+                vertex_list.append(verts)
+
+        return vertex_list
+
+    def get_minimized_face_list(self):
+        face_list = list()
+        new_vertices = list()
+
+        for vertex in self.vertices:
+            new_vertex = np.matmul(np.matmul([*vertex, 1], self.t_matrix), self.p_matrix)
+            new_vertex = tuple(np.multiply(new_vertex, 1 / new_vertex[3]))
+            new_vertices.append(new_vertex)
+
+        for face in self.faces:
+            verts = (new_vertices[face[0] - 1], new_vertices[face[1] - 1], new_vertices[face[2] - 1])
+
+            a = (verts[1][1] - verts[0][1]) * (verts[2][2] - verts[0][2]) - (verts[1][2] - verts[0][2]) *\
+                (verts[2][1] - verts[0][1])
+            b = (verts[1][2] - verts[0][1]) * (verts[2][0] - verts[0][0]) - (verts[1][0] - verts[0][0]) *\
+                (verts[2][2] - verts[0][2])
+            c = (verts[1][0] - verts[0][0]) * (verts[2][1] - verts[0][1]) - (verts[1][1] - verts[0][1]) *\
+                (verts[2][0] - verts[0][0])
+
+            xc = (verts[0][0] + verts[1][0] + verts[2][0]) / 3
+            yc = (verts[0][1] + verts[1][1] + verts[2][1]) / 3
+            zc = (verts[0][2] + verts[1][2] + verts[2][2]) / 3
+
+            d = (self.eye_point[0] - xc, self.eye_point[1] - yc, self.eye_point[2] - zc)
+
+            cos_a = (a * d[0] + b * d[1] + c * d[2]) /\
+                    ((a ** 2 + b ** 2 + c ** 2) ** 0.5 * (d[0] ** 2 + d[1] ** 2 + d[2] ** 2) ** 0.5)
+
+            if degrees(acos(cos_a)) < 90:
+                face_list.append(face)
+
+        return face_list
+
+    def get_constant_shaded_lists(self):
+        triangles = list()
+        colors = list()
+
+        for face in self.get_minimized_vertex_list():
+            vertex_c = ((face[0][0] + face[1][0] + face[2][0]) / 3,
+                        (face[0][1] + face[1][1] + face[2][1]) / 3,
+                        (face[0][2] + face[1][2] + face[2][2]) / 3)
+
+            n = ((face[1][1] - face[0][1]) * (face[2][2] - face[0][2]) - (face[1][2] - face[0][2]) *
+                 (face[2][1] - face[0][1]),
+                 (face[1][2] - face[0][1]) * (face[2][0] - face[0][0]) - (face[1][0] - face[0][0]) *
+                 (face[2][2] - face[0][2]),
+                 (face[1][0] - face[0][0]) * (face[2][1] - face[0][1]) - (face[1][1] - face[0][1]) *
+                 (face[2][0] - face[0][0]))
+
+            n_length = (n[0] ** 2 + n[1] ** 2 + n[2] ** 2) ** 0.5
+            n = (n[0] / n_length, n[1] / n_length, n[2] / n_length)
+
+            l = (self.light_source[0] - vertex_c[0],
+                 self.light_source[1] - vertex_c[1],
+                 self.light_source[2] - vertex_c[2])
+
+            l_length = (l[0] ** 2 + l[1] ** 2 + l[2] ** 2) ** 0.5
+            l = (l[0] / l_length, l[1] / l_length, l[2] / l_length)
+
+            ln = l[0] * n[0] + l[1] * n[1] + l[2] * n[2]
+
+            intensity = max(0, self.intensity_i * self.coefficient_d * ln)
+            intensity += self.intensity_a * self.coefficient_a
+            intensity = min(255, int(intensity))
+
+            triangles.append((face[0][0], face[0][1], face[1][0], face[1][1], face[2][0], face[2][1]))
+            colors.append((0, intensity, 0, 0, intensity, 0, 0, intensity, 0))
+
+        return triangles, colors
+
+    def get_variable_shaded_lists(self):
+        vertex_to_faces = dict()
+        vertex_normal = dict()
+        triangles = list()
+        colors = list()
+
+        new_vertices = list()
+
+        for vertex in self.vertices:
+            new_vertex = np.matmul(np.matmul([*vertex, 1], self.t_matrix), self.p_matrix)
+            new_vertex = tuple(np.multiply(new_vertex, 1 / new_vertex[3]))
+            new_vertices.append(new_vertex)
+
+        for face in self.faces:
+            for vertex_index in face:
+                vertex_index -= 1
+                if vertex_index not in vertex_to_faces:
+                    vertex_to_faces[vertex_index] = list()
+
+                vertex_to_faces[vertex_index].append(face)
+
+        for i in range(0, len(self.vertices)):
+            n = (0, 0, 0)
+
+            for face in vertex_to_faces[i]:
+                current_vertex = (new_vertices[face[0] - 1], new_vertices[face[1] - 1], new_vertices[face[2] - 1])
+
+                a = (current_vertex[1][1] - current_vertex[0][1]) *\
+                    (current_vertex[2][2] - current_vertex[0][2]) - (current_vertex[1][2] - current_vertex[0][2]) *\
+                    (current_vertex[2][1] - current_vertex[0][1])
+                b = (current_vertex[1][2] - current_vertex[0][1]) *\
+                    (current_vertex[2][0] - current_vertex[0][0]) - (current_vertex[1][0] - current_vertex[0][0]) *\
+                    (current_vertex[2][2] - current_vertex[0][2])
+                c = (current_vertex[1][0] - current_vertex[0][0]) *\
+                    (current_vertex[2][1] - current_vertex[0][1]) - (current_vertex[1][1] - current_vertex[0][1]) *\
+                    (current_vertex[2][0] - current_vertex[0][0])
+                d = (a ** 2 + b ** 2 + c ** 2) ** 0.5
+
+                if d:
+                    n = (n[0] + a/d, n[1] + b/d, n[2] + c/d)
+
+            n_length = (n[0] ** 2 + n[1] ** 2 + n[2] ** 2) ** 0.5
+
+            if n_length:
+                vertex_normal[i] = (n[0] / n_length, n[1] / n_length, n[2] / n_length)
+            else:
+                vertex_normal[i] = n
+
+        for face in self.get_minimized_face_list():
+            intensity = [0, 0, 0]
+
+            for i, vertex_index in enumerate(face):
+                vertex_index -= 1
+                l = (self.light_source[0] - self.vertices[vertex_index][0],
+                     self.light_source[1] - self.vertices[vertex_index][1],
+                     self.light_source[2] - self.vertices[vertex_index][2])
+
+                l_length = (l[0] ** 2 + l[1] ** 2 + l[2] ** 2) ** 0.5
+
+                if l_length:
+                    l = (l[0] / l_length, l[1] / l_length, l[2] / l_length)
+
+                n = vertex_normal[vertex_index]
+                ln = l[0] * n[0] + l[1] * n[1] + l[2] * n[2]
+
+                intensity[i] = max(0, self.intensity_i * self.coefficient_d * ln)
+                intensity[i] += self.intensity_a * self.coefficient_a
+                intensity[i] = min(255, int(intensity[i]))
+
+            triangles.append((new_vertices[face[0] - 1][0], new_vertices[face[0] - 1][1],
+                              new_vertices[face[1] - 1][0], new_vertices[face[1] - 1][1],
+                              new_vertices[face[2] - 1][0], new_vertices[face[2] - 1][1]))
+            colors.append((0, intensity[0], 0, 0, intensity[1], 0, 0, intensity[2], 0))
+
+        return triangles, colors
 
     def calculate_perspective_matrices(self):
         t_1 = [[1, 0, 0, 0],
@@ -697,5 +902,88 @@ def get_bezier(vertices: List):
 
     return points
 
+
+def get_light_source() -> Tuple[float, float, float]:
+    print("Izvor svjetlosti:")
+    return get_vertex_3d()
+
+
+def get_fractal_mode():
+    user_input = None
+
+    while user_input is None:
+        user_input = input("{}: ".format("Unesite mandelbrot ili julia"))
+
+        if re.match(r"(?i)(mandelbrot|m)", user_input):
+            return 0
+        elif re.match(r"(?i)(julia|j)", user_input):
+            return 1
+        else:
+            print("Pogrešan unos.")
+            user_input = None
+
+
+def get_mandelbrot(x_y_max: Tuple[int, int], u_range: Tuple[float, float], v_range: Tuple[float, float],
+                   epsilon, iterations):
+    points = list()
+    colors = list()
+
+    for x in range(0, x_y_max[0] + 1):
+        for y in range(0, x_y_max[1] + 1):
+            u, v = ((u_range[1] - u_range[0]) / x_y_max[0] * x + u_range[0],
+                    (v_range[1] - v_range[0]) / x_y_max[1] * y + v_range[0])
+
+            k, z, r = - 1, 0, 0
+            c = complex(u, v)
+
+            for k in range(0, iterations + 1):
+                if r >= epsilon:
+                    break
+
+                z = z * z + c
+                r = (z.real ** 2 + z.imag ** 2) ** 0.5
+
+                points.append((x, y))
+
+                if k is iterations:
+                    colors.append((0, 0, 0))
+                else:
+                    colors.append((int(hash("ljac") * k) % 256,
+                                   int(hash("i") * k) % 256,
+                                   int(hash("aral") * k) % 256))
+
+    return points, colors
+
+
+def get_julia(x_y_max: Tuple[int, int], u_range: Tuple[float, float], v_range: Tuple[float, float],
+              epsilon, iterations, c):
+    points = list()
+    colors = list()
+
+    for x in range(0, x_y_max[0] + 1):
+        for y in range(0, x_y_max[1] + 1):
+            u, v = ((u_range[1] - u_range[0]) / x_y_max[0] * x + u_range[0],
+                    (v_range[1] - v_range[0]) / x_y_max[1] * y + v_range[0])
+
+            k, r = - 1, 0
+            z = complex(u, v)
+
+            for k in range(0, iterations + 1):
+                if r >= epsilon:
+                    break
+
+                z = z * z + c
+                r = (z.real ** 2 + z.imag ** 2) ** 0.5
+
+                points.append((x, y))
+
+                if k is iterations:
+                    colors.append((0, 0, 0))
+                else:
+                    colors.append((int(hash("ljac") * k) % 256,
+                                   int(hash("i") * k) % 256,
+                                   int(hash("aral") * k) % 256))
+
+    return points, colors
 
 # endregion
